@@ -39,10 +39,23 @@ class CameraCalibrator:
         self.K_robot = self.DEFAULT_K  # 扫地机内参
         self.dist = self.DEFAULT_DIST  # 畸变系数
         self.feature_matches = []
+        self.scale_factor = 1.0  # 尺度因子（米/归一化单位）
         
         # 加载配置文件（可选）
         if config:
             self.load_config(config)
+        
+    def set_scale(self, pixel_distance, real_distance_cm):
+        """
+        设置尺度校准
+        
+        Args:
+            pixel_distance: 两个像素点之间的像素距离
+            real_distance_cm: 实际距离（厘米）
+        """
+        if pixel_distance > 0:
+            self.scale_factor = real_distance_cm / 100.0 / pixel_distance
+            print(f">>> 尺度已校准: 1 像素 = {self.scale_factor:.4f} 米")
         
     def calibrate(self, image1_path, image2_path):
         """
@@ -180,12 +193,16 @@ class CameraCalibrator:
         
         d = -t_inv[2] / denom
         
-        # 计算世界坐标
+        # 计算世界坐标（应用尺度因子）
         P_camera = d * np.array([x_norm, y_norm, 1])
         P_world = R_inv @ P_camera + t_inv
         
-        # 返回元组，确保可格式化
-        return (float(P_world[0]), float(P_world[1]), float(P_world[2]))
+        # 应用尺度因子转换为米
+        X = float(P_world[0] * self.scale_factor)
+        Y = float(P_world[1] * self.scale_factor)
+        Z = float(P_world[2] * self.scale_factor)
+        
+        return (X, Y, Z)
     
     def save_params(self, filepath):
         """保存标定参数"""
@@ -228,11 +245,22 @@ def main():
     parser.add_argument('--output', type=str, default='models/calibration.yaml', help='输出参数文件')
     parser.add_argument('--interactive', action='store_true', help='交互式验证模式')
     parser.add_argument('--calibrate', action='store_true', help='执行标定')
+    parser.add_argument('--scale', type=float, default=None, help='手动输入尺度校准（像素距离,实际cm），如: --scale 1000,155.5')
     
     args = parser.parse_args()
     
     # 创建标定器
     calibrator = CameraCalibrator()
+    
+    # 手动尺度校准
+    if args.scale:
+        parts = str(args.scale).split(',')
+        if len(parts) == 2:
+            pixel_dist = float(parts[0])
+            real_cm = float(parts[1])
+            calibrator.set_scale(pixel_dist, real_cm)
+        else:
+            print("错误：尺度参数格式应为 '像素距离,实际cm'，如: --scale 1000,155.5")
     
     # 检查是否有已保存的参数
     if not args.calibrate and os.path.exists(args.output):
@@ -266,62 +294,106 @@ def main():
         h, w = img.shape[:2]
         img_small = cv2.resize(img, (w // 2, h // 2))
         
-        cv2.putText(img_small, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        
         # 用于存储所有点击的点
         click_points = []
+        calibration_points = []  # 用于校准的两个点
+        mode = 'normal'  # 'normal' 或 'calibration'
+        
+        def draw_display():
+            display_img = img_small.copy()
+            
+            # 绘制标题
+            if mode == 'calibration':
+                title = f"校准模式 - 点击两个点 (剩余 {2 - len(calibration_points)} 个) | 按 'q' 退出 | 按 'c' 取消"
+            else:
+                title = "Wall Camera | 按 'c' 校准 | 按 'q' 退出"
+            cv2.putText(display_img, title, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # 绘制已点击的点
+            for px, py, pcoord in click_points:
+                cv2.circle(display_img, (px, py), 8, (0, 255, 0), 2)
+                if pcoord:
+                    text = f"({pcoord[0]:.2f}, {pcoord[1]:.2f}, {pcoord[2]:.2f})m"
+                    cv2.putText(display_img, text, (px + 15, py - 10), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # 绘制校准点（红色）
+            for px, py in calibration_points:
+                cv2.circle(display_img, (px, py), 10, (0, 0, 255), 2)
+            
+            return display_img
         
         def mouse_callback(event, x, y, flags, param):
+            nonlocal mode, calibration_points
+            
             if event == cv2.EVENT_LBUTTONDOWN:
-                # 每次点击都从原始图像重新复制
-                display_img = img_small.copy()
-                
-                # 重新绘制标题
-                cv2.putText(display_img, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-                # 绘制之前所有点击的点
-                for px, py, pcoord in click_points:
-                    cv2.circle(display_img, (px, py), 8, (0, 255, 0), 2)
-                    if pcoord:
-                        text = f"({pcoord[0]:.2f}, {pcoord[1]:.2f}, {pcoord[2]:.2f})m"
-                        cv2.putText(display_img, text, (px + 15, py - 10), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-                # 坐标还原到原始图像尺寸
                 orig_x = x * 2
                 orig_y = y * 2
-                coord = calibrator.pixel_to_world(int(orig_x), int(orig_y))
                 
-                # 存储点击点和坐标
-                click_points.append((x, y, coord))
+                if mode == 'calibration':
+                    calibration_points.append((x, y))
+                    
+                    if len(calibration_points) == 2:
+                        # 计算像素距离
+                        p1, p2 = calibration_points
+                        pixel_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                        
+                        print(f">>> 两个校准点像素距离: {pixel_dist:.2f} 像素")
+                        print(f">>> 请输入实际距离 (cm): ", end='', flush=True)
+                        
+                        # 切换回正常模式
+                        mode = 'normal'
+                        calibration_points = []
                 
-                # 在图像上标记新点
-                cv2.circle(display_img, (x, y), 8, (0, 255, 0), 2)
-                if coord:
-                    text = f"({coord[0]:.2f}, {coord[1]:.2f}, {coord[2]:.2f})m"
-                    cv2.putText(display_img, text, (x + 15, y - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
                 else:
-                    cv2.putText(display_img, "(超出视野)", (x + 15, y - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                    print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
-                
-                # 更新窗口显示
-                cv2.imshow('Wall Camera', display_img)
+                    # 正常模式
+                    coord = calibrator.pixel_to_world(int(orig_x), int(orig_y))
+                    click_points.append((x, y, coord))
+                    
+                    if coord:
+                        print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
+                    else:
+                        print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
         
         cv2.namedWindow('Wall Camera')
         cv2.setMouseCallback('Wall Camera', mouse_callback)
         
         while True:
-            cv2.imshow('Wall Camera', img_small)
+            display_img = draw_display()
+            cv2.imshow('Wall Camera', display_img)
             key = cv2.waitKey(1) & 0xFF
+            
             if key == ord('q') or key == 27:
                 break
+            elif key == ord('c') and mode == 'normal':
+                # 进入校准模式
+                mode = 'calibration'
+                calibration_points = []
+                click_points = []
+                print("\n>>> 进入校准模式：点击两个点，输入实际距离进行校准")
         
         cv2.destroyAllWindows()
+        
+        # 如果在交互中进行了校准（通过输入实际距离）
+        if len(calibration_points) == 0 and mode == 'normal':
+            pass  # 用户已退出
+        
+        # 让用户输入校准距离
+        if len(click_points) >= 2:
+            # 计算最后两点距离
+            _, _, c1 = click_points[-2] if len(click_points) >= 2 else (0, 0, None)
+            _, _, c2 = click_points[-1]
+            
+            if c1 and c2:
+                pixel_dist = np.sqrt((click_points[-2][0] - click_points[-1][0])**2 + 
+                                    (click_points[-2][1] - click_points[-1][1])**2) * 2
+                
+                print(f"\n>>> 检测到两个点，想用这两点进行校准吗？")
+                print(f">>> 两点像素距离: {pixel_dist:.2f}")
+                print(f">>> 输入实际距离 (cm)，或按回车跳过: ", end='')
+                # 这里需要用户输入，实际使用时可简化
+    
+    print("\n=== 完成 ===")
     
     print("\n=== 完成 ===")
 
