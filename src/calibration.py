@@ -4,8 +4,11 @@
 功能：特征匹配标定 + 坐标转换 + 交互式验证
 """
 
+print(">>> 正在导入模块...")
 import cv2
+print(f">>> cv2 版本: {cv2.__version__}")
 import numpy as np
+print(">>> numpy 导入成功")
 import argparse
 import os
 import sys
@@ -272,7 +275,13 @@ def main():
     else:
         # 执行标定
         print("\n=== 开始标定 ===")
-        R, t = calibrator.calibrate(args.image1, args.image2)
+        try:
+            R, t = calibrator.calibrate(args.image1, args.image2)
+        except Exception as e:
+            print(f">>> 标定失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return
         
         print("\n=== 标定结果 ===")
         print(f"旋转矩阵 R:\n{R}")
