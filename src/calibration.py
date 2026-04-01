@@ -246,12 +246,11 @@ def main():
             print(f"无法读取图像: {args.image1}")
             return
         
-        # 缩小到1/2显示
+        # 缩小到1/2显示（保留原始图像）
         h, w = img.shape[:2]
-        img = cv2.resize(img, (w // 2, h // 2))
-        display_img = img.copy()
+        img_small = cv2.resize(img, (w // 2, h // 2))
         
-        cv2.putText(display_img, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
+        cv2.putText(img_small, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         
         # 用于存储所有点击的点
@@ -259,6 +258,21 @@ def main():
         
         def mouse_callback(event, x, y, flags, param):
             if event == cv2.EVENT_LBUTTONDOWN:
+                # 每次点击都从原始图像重新复制
+                display_img = img_small.copy()
+                
+                # 重新绘制标题
+                cv2.putText(display_img, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
+                # 绘制之前所有点击的点
+                for px, py, pcoord in click_points:
+                    cv2.circle(display_img, (px, py), 8, (0, 255, 0), 2)
+                    if pcoord:
+                        text = f"({pcoord[0]:.2f}, {pcoord[1]:.2f}, {pcoord[2]:.2f})m"
+                        cv2.putText(display_img, text, (px + 15, py - 10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
                 # 坐标还原到原始图像尺寸
                 orig_x = x * 2
                 orig_y = y * 2
@@ -267,7 +281,7 @@ def main():
                 # 存储点击点和坐标
                 click_points.append((x, y, coord))
                 
-                # 在图像上标记
+                # 在图像上标记新点
                 cv2.circle(display_img, (x, y), 8, (0, 255, 0), 2)
                 if coord:
                     text = f"({coord[0]:.2f}, {coord[1]:.2f}, {coord[2]:.2f})m"
@@ -278,12 +292,15 @@ def main():
                     cv2.putText(display_img, "(超出视野)", (x + 15, y - 10), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                     print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
+                
+                # 更新窗口显示
+                cv2.imshow('Wall Camera', display_img)
         
         cv2.namedWindow('Wall Camera')
         cv2.setMouseCallback('Wall Camera', mouse_callback)
         
         while True:
-            cv2.imshow('Wall Camera', display_img)
+            cv2.imshow('Wall Camera', img_small)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
