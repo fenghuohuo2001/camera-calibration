@@ -207,27 +207,33 @@ class CameraCalibrator:
 
 def main():
     parser = argparse.ArgumentParser(description='双相机标定工具')
-    parser.add_argument('--image1', type=str, required=True, help='墙装相机图像路径')
-    parser.add_argument('--image2', type=str, required=True, help='扫地机图像路径')
+    parser.add_argument('--image1', type=str, default='data/20251203-205714.jpg', help='墙装相机图像路径')
+    parser.add_argument('--image2', type=str, default='data/20251203-210012.jpg', help='扫地机图像路径')
     parser.add_argument('--output', type=str, default='models/calibration.yaml', help='输出参数文件')
     parser.add_argument('--interactive', action='store_true', help='交互式验证模式')
+    parser.add_argument('--calibrate', action='store_true', help='执行标定')
     
     args = parser.parse_args()
     
     # 创建标定器
     calibrator = CameraCalibrator()
     
-    # 执行标定
-    print("\n=== 开始标定 ===")
-    R, t = calibrator.calibrate(args.image1, args.image2)
-    
-    print("\n=== 标定结果 ===")
-    print(f"旋转矩阵 R:\n{R}")
-    print(f"\n平移向量 t: {t.flatten()}")
-    
-    # 保存参数
-    os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
-    calibrator.save_params(args.output)
+    # 检查是否有已保存的参数
+    if not args.calibrate and os.path.exists(args.output):
+        print("\n=== 加载已保存的标定参数 ===")
+        calibrator.load_params(args.output)
+    else:
+        # 执行标定
+        print("\n=== 开始标定 ===")
+        R, t = calibrator.calibrate(args.image1, args.image2)
+        
+        print("\n=== 标定结果 ===")
+        print(f"旋转矩阵 R:\n{R}")
+        print(f"\n平移向量 t: {t.flatten()}")
+        
+        # 保存参数
+        os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
+        calibrator.save_params(args.output)
     
     # 交互式验证
     if args.interactive:
@@ -236,12 +242,20 @@ def main():
         print("按 'q' 或 'ESC' 退出")
         
         img = cv2.imread(args.image1)
+        if img is None:
+            print(f"无法读取图像: {args.image1}")
+            return
+        
+        cv2.putText(img, "Wall Camera - Click to get coordinates", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
         def mouse_callback(event, x, y, flags, param):
             if event == cv2.EVENT_LBUTTONDOWN:
                 coord = calibrator.pixel_to_world(x, y)
                 if coord:
-                    print(f"点击坐标 ({x}, {y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
+                    print(f">>> 点击坐标 ({x}, {y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
+                else:
+                    print(f">>> 点击坐标 ({x}, {y}) -> 无法计算（超出视野）")
         
         cv2.namedWindow('Wall Camera')
         cv2.setMouseCallback('Wall Camera', mouse_callback)
@@ -253,6 +267,8 @@ def main():
                 break
         
         cv2.destroyAllWindows()
+    
+    print("\n=== 完成 ===")
 
 
 if __name__ == '__main__':
