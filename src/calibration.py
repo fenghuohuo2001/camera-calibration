@@ -252,8 +252,11 @@ def main():
     parser.add_argument('--scale', type=str, default=None, help='手动输入尺度校准（像素距离,实际cm），如: --scale 1000,155.5')
     
     args = parser.parse_args()
+    print(">>> 参数解析完成")
     
-    print(f">>> 参数解析完成: image1={args.image1}, calibrate={args.calibrate}, interactive={args.interactive}")
+    print(f">>> image1={args.image1}")
+    print(f">>> calibrate={args.calibrate}")
+    print(f">>> interactive={args.interactive}")
     
     # 创建标定器
     calibrator = CameraCalibrator()
