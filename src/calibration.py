@@ -11,7 +11,10 @@ import os
 import sys
 import yaml
 from pathlib import Path
-import os
+
+# 添加父目录到路径
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from visualization import draw_matches
 
 
 class CameraCalibrator:
@@ -124,7 +127,6 @@ class CameraCalibrator:
         self.kp2 = kp2
         
         # 保存特征匹配可视化结果
-        from .visualization import draw_matches
         result_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'result')
         os.makedirs(result_dir, exist_ok=True)
         output_path = os.path.join(result_dir, 'match_result.jpg')
