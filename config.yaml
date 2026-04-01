@@ -1,0 +1,38 @@
+# 双相机标定配置文件
+
+# 相机参数（需要根据实际相机标定）
+camera:
+  wall_camera:
+    fx: 800.0
+    fy: 800.0
+    cx: 320.0
+    cy: 240.0
+    height: 2.5  # 相机安装高度（米）
+    pitch: 0.0   # 俯仰角（弧度）
+    roll: 0.0    # 翻滚角（弧度）
+  
+  robot_camera:
+    fx: 800.0
+    fy: 800.0
+    cx: 320.0
+    cy: 240.0
+    height: 0.3  # 相机距离地面高度（米）
+
+# 标定参数
+calibration:
+  features: 2000       # ORB特征点数量
+  match_ratio: 0.75     # 匹配比率阈值
+  ransac_threshold: 3.0 # RANSAC阈值
+  ransac_prob: 0.99     # RANSAC置信度
+
+# 图像参数
+image:
+  input_dir: "data/"
+  output_dir: "models/"
+  format: "jpg"
+
+# 交互式验证
+interactive:
+  window_name: "Wall Camera"
+  point_color: (0, 255, 0)  # 绿色
+  text_color: (255, 255, 255)  # 白色
