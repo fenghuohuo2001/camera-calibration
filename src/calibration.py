@@ -17,7 +17,14 @@ from pathlib import Path
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from visualization import draw_matches
+
+print(">>> 准备导入 visualization...")
+try:
+    from visualization import draw_matches
+    print(">>> visualization 导入成功")
+except Exception as e:
+    print(f">>> visualization 导入失败: {e}")
+    draw_matches = None
 
 
 class CameraCalibrator:
