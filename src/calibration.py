@@ -153,7 +153,8 @@ class CameraCalibrator:
         
         # 反向变换
         R_inv = self.R.T
-        t_inv = -self.R.T @ self.t
+        t_vec = self.t.flatten()  # 确保是一维向量
+        t_inv = -self.R.T @ t_vec
         
         # 射线与地面交点计算 (Z=0)
         denom = R_inv[2, 0] * x_norm + R_inv[2, 1] * y_norm + R_inv[2, 2]
@@ -167,7 +168,8 @@ class CameraCalibrator:
         P_camera = d * np.array([x_norm, y_norm, 1])
         P_world = R_inv @ P_camera + t_inv
         
-        return (P_world[0], P_world[1], P_world[2])
+        # 返回元组，确保可格式化
+        return (float(P_world[0]), float(P_world[1]), float(P_world[2]))
     
     def save_params(self, filepath):
         """保存标定参数"""
