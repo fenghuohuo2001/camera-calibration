@@ -246,16 +246,22 @@ def main():
             print(f"无法读取图像: {args.image1}")
             return
         
+        # 缩小到1/2显示
+        h, w = img.shape[:2]
+        img = cv2.resize(img, (w // 2, h // 2))
+        
         cv2.putText(img, "Wall Camera - Click to get coordinates", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
         def mouse_callback(event, x, y, flags, param):
-            if event == cv2.EVENT_LBUTTONDOWN:
-                coord = calibrator.pixel_to_world(x, y)
-                if coord:
-                    print(f">>> 点击坐标 ({x}, {y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
-                else:
-                    print(f">>> 点击坐标 ({x}, {y}) -> 无法计算（超出视野）")
+            # 坐标还原到原始图像尺寸
+            orig_x = x * 2
+            orig_y = y * 2
+            coord = calibrator.pixel_to_world(int(orig_x), int(orig_y))
+            if coord:
+                print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
+            else:
+                print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
         
         cv2.namedWindow('Wall Camera')
         cv2.setMouseCallback('Wall Camera', mouse_callback)
