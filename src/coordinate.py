@@ -6,20 +6,39 @@
 import numpy as np
 
 
-def pixel_to_world_simple(u, v, fx, fy, cx, cy, camera_height, pitch=0, roll=0):
+# 1080P相机默认内参
+DEFAULT_K = np.array([
+    [1340.4545644883922, 0.0, 957.6642584789628],
+    [0.0, 1338.9037588649903, 514.7896498420388],
+    [0.0, 0.0, 1.0]
+])
+
+# 畸变系数
+DEFAULT_DIST = np.array([-0.4592577581462052, 0.26447244392183217, 
+                        0.0005528469178028297, 0.0005887615350833584, 
+                        -0.0831977348681754])
+
+
+def pixel_to_world_simple(u, v, fx=None, fy=None, cx=None, cy=None, camera_height=2.5, pitch=0, roll=0):
     """
     简化版坐标转换 - 已知相机高度
     
     Args:
         u, v: 像素坐标
-        fx, fy: 焦距
-        cx, cy: 主点
+        fx, fy: 焦距（默认使用1080P相机参数）
+        cx, cy: 主点（默认使用1080P相机参数）
         camera_height: 相机距离地面高度（米）
         pitch, roll: 相机俯仰角和翻滚角（弧度）
         
     Returns:
         (x, y, z): 世界坐标（米）
     """
+    # 使用默认内参
+    if fx is None:
+        fx = DEFAULT_K[0, 0]
+        fy = DEFAULT_K[1, 1]
+        cx = DEFAULT_K[0, 2]
+        cy = DEFAULT_K[1, 2]
     # 角度补偿
     x_angle = np.arctan2(u - cx, fx) - pitch
     y_angle = np.arctan2(v - cy, fy) - roll
@@ -36,7 +55,7 @@ def pixel_to_world_simple(u, v, fx, fy, cx, cy, camera_height, pitch=0, roll=0):
     return (x, y, 0)
 
 
-def pixel_to_world_stereo(u_wall, u_robot, baseline, fx, fy):
+def pixel_to_world_stereo(u_wall, u_robot, baseline, fx=None, fy=None):
     """
     双目三角测距
     
@@ -44,11 +63,16 @@ def pixel_to_world_stereo(u_wall, u_robot, baseline, fx, fy):
         u_wall: 墙装相机像素x坐标
         u_robot: 扫地机相机像素x坐标
         baseline: 两相机基线距离（米）
-        fx, fy: 焦距
+        fx, fy: 焦距（默认使用1080P相机参数）
         
     Returns:
         depth: 深度（米）
     """
+    # 使用默认内参
+    if fx is None:
+        fx = DEFAULT_K[0, 0]
+        fy = DEFAULT_K[1, 1]
+    
     disparity = abs(u_wall - u_robot)
     
     if disparity < 1:

@@ -15,12 +15,29 @@ from pathlib import Path
 class CameraCalibrator:
     """双相机标定类"""
     
-    def __init__(self):
+    # 1080P相机内参
+    DEFAULT_K = np.array([
+        [1340.4545644883922, 0.0, 957.6642584789628],
+        [0.0, 1338.9037588649903, 514.7896498420388],
+        [0.0, 0.0, 1.0]
+    ])
+    
+    # 畸变系数
+    DEFAULT_DIST = np.array([-0.4592577581462052, 0.26447244392183217, 
+                            0.0005528469178028297, 0.0005887615350833584, 
+                            -0.0831977348681754])
+    
+    def __init__(self, config=None):
         self.R = None  # 旋转矩阵
         self.t = None  # 平移向量
-        self.K_wall = None  # 墙装相机内参
-        self.K_robot = None  # 扫地机内参
+        self.K_wall = self.DEFAULT_K  # 墙装相机内参
+        self.K_robot = self.DEFAULT_K  # 扫地机内参
+        self.dist = self.DEFAULT_DIST  # 畸变系数
         self.feature_matches = []
+        
+        # 加载配置文件（可选）
+        if config:
+            self.load_config(config)
         
     def calibrate(self, image1_path, image2_path):
         """
@@ -42,6 +59,18 @@ class CameraCalibrator:
         
         print(f"图像1尺寸: {img1.shape}")
         print(f"图像2尺寸: {img2.shape}")
+        
+        # 畸变校正
+        h, w = img1.shape[:2]
+        new_k, roi = cv2.getOptimalNewCameraMatrix(self.K_wall, self.dist, (w, h), 1, (w, h))
+        img1_undistorted = cv2.undistort(img1, self.K_wall, self.dist, None, new_k)
+        img2_undistorted = cv2.undistort(img2, self.K_wall, self.dist, None, new_k)
+        
+        # 使用校正后的图像进行特征提取
+        img1 = img1_undistorted
+        img2 = img2_undistorted
+        
+        print("已完成畸变校正")
         
         # 特征提取 - 使用ORB
         orb = cv2.ORB_create(nfeatures=2000)
@@ -100,7 +129,7 @@ class CameraCalibrator:
         
         Args:
             u, v: 像素坐标
-            K: 相机内参矩阵（可选，默认使用单位矩阵）
+            K: 相机内参矩阵（可选，默认使用1080P相机内参）
             Z: 目标点高度（默认地面=0）
             
         Returns:
@@ -109,9 +138,13 @@ class CameraCalibrator:
         if self.R is None or self.t is None:
             raise ValueError("请先执行标定")
         
-        # 默认使用归一化内参
+        # 使用默认内参
         if K is None:
-            K = np.eye(3)
+            K = self.K_wall
+        
+        # 像素 → 归一化平面
+        x_norm = (u - K[0, 2]) / K[0, 0]
+        y_norm = (v - K[1, 2]) / K[1, 1]
         
         # 像素 → 归一化平面
         x_norm = (u - K[0, 2]) / K[0, 0]
@@ -143,8 +176,9 @@ class CameraCalibrator:
         params = {
             'R': self.R.tolist(),
             't': self.t.tolist(),
-            'K_wall': self.K_wall.tolist() if self.K_wall is not None else None,
-            'K_robot': self.K_robot.tolist() if self.K_robot is not None else None
+            'K_wall': self.K_wall.tolist(),
+            'K_robot': self.K_robot.tolist(),
+            'distortion': self.dist.tolist()
         }
         
         with open(filepath, 'w') as f:
