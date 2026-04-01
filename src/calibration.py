@@ -249,25 +249,41 @@ def main():
         # 缩小到1/2显示
         h, w = img.shape[:2]
         img = cv2.resize(img, (w // 2, h // 2))
+        display_img = img.copy()
         
-        cv2.putText(img, "Wall Camera - Click to get coordinates", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(display_img, "Wall Camera - Click to get coordinates (Press 'q' to quit)", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        # 用于存储所有点击的点
+        click_points = []
         
         def mouse_callback(event, x, y, flags, param):
-            # 坐标还原到原始图像尺寸
-            orig_x = x * 2
-            orig_y = y * 2
-            coord = calibrator.pixel_to_world(int(orig_x), int(orig_y))
-            if coord:
-                print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
-            else:
-                print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
+            if event == cv2.EVENT_LBUTTONDOWN:
+                # 坐标还原到原始图像尺寸
+                orig_x = x * 2
+                orig_y = y * 2
+                coord = calibrator.pixel_to_world(int(orig_x), int(orig_y))
+                
+                # 存储点击点和坐标
+                click_points.append((x, y, coord))
+                
+                # 在图像上标记
+                cv2.circle(display_img, (x, y), 8, (0, 255, 0), 2)
+                if coord:
+                    text = f"({coord[0]:.2f}, {coord[1]:.2f}, {coord[2]:.2f})m"
+                    cv2.putText(display_img, text, (x + 15, y - 10), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1.5)
+                    print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
+                else:
+                    cv2.putText(display_img, "(超出视野)", (x + 15, y - 10), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1.5)
+                    print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
         
         cv2.namedWindow('Wall Camera')
         cv2.setMouseCallback('Wall Camera', mouse_callback)
         
         while True:
-            cv2.imshow('Wall Camera', img)
+            cv2.imshow('Wall Camera', display_img)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
