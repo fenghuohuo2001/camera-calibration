@@ -3,6 +3,10 @@
 演示程序 - 展示标定和坐标转换功能
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 from src.calibration import CameraCalibrator
 from src.coordinate import pixel_to_world_simple, compute_distance
