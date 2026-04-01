@@ -77,17 +77,17 @@ class CameraCalibrator:
         
         print("已完成畸变校正")
         
-        # 特征提取 - 使用ORB
-        orb = cv2.ORB_create(nfeatures=2000)
+        # 特征提取 - 使用SIFT（更高精度）
+        sift = cv2.SIFT_create(nfeatures=2000)
         
-        kp1, des1 = orb.detectAndCompute(img1, None)
-        kp2, des2 = orb.detectAndCompute(img2, None)
+        kp1, des1 = sift.detectAndCompute(img1, None)
+        kp2, des2 = sift.detectAndCompute(img2, None)
         
         print(f"图像1特征点: {len(kp1)}")
         print(f"图像2特征点: {len(kp2)}")
         
-        # 特征匹配
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        # 特征匹配 - SIFT使用L2距离
+        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
         matches = bf.knnMatch(des1, des2, k=2)
         
         # 比率测试过滤
