@@ -272,11 +272,11 @@ def main():
                 if coord:
                     text = f"({coord[0]:.2f}, {coord[1]:.2f}, {coord[2]:.2f})m"
                     cv2.putText(display_img, text, (x + 15, y - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1.5)
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                     print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 实际坐标: ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) 米")
                 else:
                     cv2.putText(display_img, "(超出视野)", (x + 15, y - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1.5)
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                     print(f">>> 点击坐标 ({orig_x}, {orig_y}) -> 无法计算（超出视野）")
         
         cv2.namedWindow('Wall Camera')
