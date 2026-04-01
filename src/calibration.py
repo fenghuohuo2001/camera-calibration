@@ -223,8 +223,8 @@ class CameraCalibrator:
 
 def main():
     parser = argparse.ArgumentParser(description='双相机标定工具')
-    parser.add_argument('--image1', type=str, default='data/20251203-205714.jpg', help='墙装相机图像路径')
-    parser.add_argument('--image2', type=str, default='data/20251203-210012.jpg', help='扫地机图像路径')
+    parser.add_argument('--image1', type=str, default='data/20260401-193026.jpg', help='墙装相机图像路径')
+    parser.add_argument('--image2', type=str, default='data/20260401-193031.jpg', help='扫地机图像路径')
     parser.add_argument('--output', type=str, default='models/calibration.yaml', help='输出参数文件')
     parser.add_argument('--interactive', action='store_true', help='交互式验证模式')
     parser.add_argument('--calibrate', action='store_true', help='执行标定')
