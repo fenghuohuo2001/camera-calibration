@@ -11,6 +11,7 @@ import os
 import sys
 import yaml
 from pathlib import Path
+import os
 
 
 class CameraCalibrator:
@@ -121,6 +122,19 @@ class CameraCalibrator:
         self.feature_matches = good_matches
         self.kp1 = kp1
         self.kp2 = kp2
+        
+        # 保存特征匹配可视化结果
+        from .visualization import draw_matches
+        result_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'result')
+        os.makedirs(result_dir, exist_ok=True)
+        output_path = os.path.join(result_dir, 'match_result.jpg')
+        
+        # 读取原始图像用于可视化
+        img1_orig = cv2.imread(image1_path)
+        img2_orig = cv2.imread(image2_path)
+        
+        draw_matches(img1_orig, img2_orig, kp1, kp2, good_matches, 
+                     output_path=output_path, max_matches=50, scale=0.3)
         
         return R, t
     
