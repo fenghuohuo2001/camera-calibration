@@ -281,6 +281,13 @@ def main():
     
     # 交互式验证
     if args.interactive:
+        # 检查是否有显示器
+        import os
+        if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
+            print("警告：未检测到显示环境 (DISPLAY/WAYLAND_DISPLAY)")
+            print("交互模式可能无法运行")
+            print("尝试使用虚拟显示器或设置 DISPLAY 环境变量")
+        
         print("\n=== 交互式验证模式 ===")
         print("点击墙装相机图像任意位置，获取实际坐标")
         print("按 'q' 或 'ESC' 退出")
