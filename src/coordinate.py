@@ -50,7 +50,7 @@ def pixel_to_world_simple(u, v, fx=None, fy=None, cx=None, cy=None, camera_heigh
     distance = camera_height / np.cos(y_angle)
     
     x = distance * np.sin(x_angle)
-    y = distance * np.tan(y_angle)
+    y = distance * np.sin(y_angle)
     
     return (x, y, 0)
 

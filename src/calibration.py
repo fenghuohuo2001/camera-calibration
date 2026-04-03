@@ -186,10 +186,6 @@ class CameraCalibrator:
         x_norm = (u - K[0, 2]) / K[0, 0]
         y_norm = (v - K[1, 2]) / K[1, 1]
         
-        # 像素 → 归一化平面
-        x_norm = (u - K[0, 2]) / K[0, 0]
-        y_norm = (v - K[1, 2]) / K[1, 1]
-        
         # 反向变换
         R_inv = self.R.T
         t_vec = self.t.flatten()  # 确保是一维向量
@@ -265,6 +261,12 @@ def main():
     print(f">>> calibrate={args.calibrate}")
     print(f">>> interactive={args.interactive}")
     
+    # 确保 data 目录存在
+    data_dir = 'data'
+    if not os.path.isdir(data_dir):
+        print(f">>> 创建 data 目录: {data_dir}")
+        os.makedirs(data_dir, exist_ok=True)
+    
     # 创建标定器
     calibrator = CameraCalibrator()
     
@@ -308,82 +310,6 @@ def main():
             print("警告：未检测到显示环境 (DISPLAY/WAYLAND_DISPLAY)")
             print("交互模式可能无法运行")
             print("尝试使用虚拟显示器或设置 DISPLAY 环境变量")
-        
-        print("\n=== 交互式验证模式 ===")
-        print("点击墙装相机图像任意位置，获取实际坐标")
-        print("按 'q' 或 'ESC' 退出")
-        
-        img = cv2.imread(args.image1)
-        if img is None:
-            print(f"无法读取图像: {args.image1}")
-            return
-        
-        # 缩小到1/2显示（保留原始图像）
-        h, w = img.shape[:2]
-        img_small = cv2.resize(img, (w // 2, h // 2))
-        
-        # 用于存储点击的点
-        click_points = []
-        
-        def draw_display():
-            display_img = img_small.copy()
-            
-            # 绘制标题
-            title = "Wall Camera - 点击两个点进行校准 | 按 'q' 退出 | 按 'c' 清空"
-            cv2.putText(display_img, title, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-            # 绘制已点击的点
-            for i, (px, py) in enumerate(click_points):
-                color = (0, 0, 255) if len(click_points) == 2 and i == 1 else (0, 255, 0)
-                cv2.circle(display_img, (px, py), 10, color, 2)
-            
-            # 如果有两个点，画出连线并显示距离
-            if len(click_points) == 2:
-                p1, p2 = click_points
-                cv2.line(display_img, p1, p2, (255, 255, 0), 2)
-                pixel_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-                mid_x = (p1[0] + p2[0]) // 2
-                mid_y = (p1[1] + p2[1]) // 2
-                text = f"像素距离: {pixel_dist:.1f}"
-                cv2.putText(display_img, text, (mid_x - 50, mid_y - 20), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-            
-            return display_img
-        
-        def mouse_callback(event, x, y, flags, param):
-            if event == cv2.EVENT_LBUTTONDOWN:
-                if len(click_points) < 2:
-                    click_points.append((x, y))
-                    
-                    if len(click_points) == 2:
-                        p1, p2 = click_points
-                        pixel_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-                        print(f">>> 两个点的像素距离: {pixel_dist:.2f}")
-                        print(f">>> 请输入实际距离 (cm)，用于校准: ", end='', flush=True)
-        
-        cv2.namedWindow('Wall Camera')
-        cv2.setMouseCallback('Wall Camera', mouse_callback)
-        
-        while True:
-            display_img = draw_display()
-            cv2.imshow('Wall Camera', display_img)
-            key = cv2.waitKey(1) & 0xFF
-            
-            if key == ord('q') or key == 27:
-                break
-            elif key == ord('c'):
-                click_points = []
-                print("\n>>> 已清空点击点")
-        
-        cv2.destroyAllWindows()
-        
-        # 计算校准
-        if len(click_points) == 2:
-            p1, p2 = click_points
-            pixel_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-            # 实际距离 155.5 cm
-            real_cm = 155.5
-            calibrator.set_scale(pixel_dist, real_cm)
         
         # 继续正常的交互验证
         print("\n=== 交互式验证模式 ===")
