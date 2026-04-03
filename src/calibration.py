@@ -42,38 +42,60 @@ class CameraCalibrator:
                             0.0005528469178028297, 0.0005887615350833584, 
                             -0.0831977348681754])
     
-    def __init__(self, config=None):
+    def __init__(self, config=None, pitch=-25.37):
         self.R = None  # 旋转矩阵
         self.t = None  # 平移向量
         self.K_wall = self.DEFAULT_K  # 墙装相机内参
         self.K_robot = self.DEFAULT_K  # 扫地机内参
         self.dist = self.DEFAULT_DIST  # 畸变系数
         self.feature_matches = []
-        self.scale_factor = 1.0  # 尺度因子（米/归一化单位）
-        
+        self.scale_factor = 1.0  # 尺度因子（米/像素）
+        self.camera_height = 1.74  # 相机高度（米），通过校准反推
+        self.pitch = pitch  # 相机俯角（度），负值表示俯视
+
         # 加载配置文件（可选）
         if config:
             self.load_config(config)
         
-    def set_scale(self, pixel_distance, real_distance):
+    def set_scale(self, u1, v1, u2, v2, real_distance):
         """
-        设置尺度校准（用于验证计算精度）
-        
-        注意：这个方法主要用于显示比例尺信息，实际坐标转换使用相机高度
-        直接计算，不需要 scale_factor。
-        
+        通过已知实际距离的两个像素点，反推相机有效高度。
+
+        单目测距原理：相机高度 h 下，像素 (u,v) 的地面投影距离为
+            P = (h / y_norm) * [x_norm, 1]
+        给定两个像素点和它们的实际距离，可以解出 h。
+
         Args:
-            pixel_distance: 两个像素点之间的像素距离
-            real_distance: 实际距离（米）
+            u1, v1: 第一个校准点的像素坐标（原始图像）
+            u2, v2: 第二个校准点的像素坐标（原始图像）
+            real_distance: 两个点之间的实际距离（米）
         """
-        if pixel_distance > 0:
-            # 正确公式：实际距离(米) / 像素距离 = 米/像素
-            self.scale_factor = real_distance / pixel_distance
-            print(f">>> 比例尺参考: 1 像素 ≈ {self.scale_factor:.6f} 米")
-            print(f">>> 校准点距离: {real_distance} m = {pixel_distance:.1f} 像素")
+        K = self.K_wall
+
+        def ground_point(u, v, h):
+            xn = (u - K[0, 2]) / K[0, 0]
+            yn = (v - K[1, 2]) / K[1, 1]
+            lam = h / yn
+            return (lam * xn, lam)
+
+        # 计算 h=1.0 时的地面距离，距离与 h 成正比
+        g1 = ground_point(u1, v1, 1.0)
+        g2 = ground_point(u2, v2, 1.0)
+        dist_per_h = np.sqrt((g1[0] - g2[0])**2 + (g1[1] - g2[1])**2)
+
+        if dist_per_h > 1e-6:
+            self.camera_height = real_distance / dist_per_h
+            self.scale_factor = real_distance / np.sqrt((u1 - u2)**2 + (v1 - v2)**2)
+            print(f">>> 校准完成: 相机有效高度 = {self.camera_height:.3f} 米")
+            print(f">>> 参考: 1 像素 ≈ {self.scale_factor:.6f} 米")
+
             # 验证
-            verified_distance = self.scale_factor * pixel_distance
-            print(f">>> 验证: {pixel_distance:.1f} 像素 × {self.scale_factor:.6f} = {verified_distance:.3f} 米")
+            g1v = ground_point(u1, v1, self.camera_height)
+            g2v = ground_point(u2, v2, self.camera_height)
+            verify_dist = np.sqrt((g1v[0] - g2v[0])**2 + (g1v[1] - g2v[1])**2)
+            print(f">>> 验证: 计算距离 = {verify_dist:.3f} 米 (目标 {real_distance} 米)")
+        else:
+            print(">>> 警告: 校准点选择不当（两点可能在同一水平线上）")
         
     def calibrate(self, image1_path, image2_path):
         """
@@ -171,57 +193,51 @@ class CameraCalibrator:
         
         return R, t
     
-    def pixel_to_world(self, u, v, K=None, camera_height=1.74, pitch=-25.37):
+    def pixel_to_world(self, u, v, K=None):
         """
-        像素坐标转世界坐标（基于相机高度的单目测距）
-        
-        原理：已知相机高度和俯角，通过射线与地面交点计算3D坐标
-        - 不需要 R|t 变换（因为是同一相机旋转视角）
-        
+        像素坐标转世界坐标（基于相机高度和俯角的双目测距）
+
+        原理：斜向下相机，俯角 pitch。射线与光轴夹角为 arctan(y_norm)，
+        射线与水平线总角度为 arctan(y_norm) + |pitch|。
+        深度 Z = camera_height / tan(arctan(y_norm) + |pitch|)
+
         Args:
-            u, v: 像素坐标
-            K: 相机内参矩阵（可选，默认使用1080P相机内参）
-            camera_height: 相机距离地面高度（米），默认1.74米
-            pitch: 相机俯仰角（度），光轴向下倾斜为负，默认-25.37°
-            
+            u, v: 像素坐标（原始图像）
+            K: 相机内参矩阵（可选，默认使用墙装相机内参）
+
         Returns:
-            (X, Y, Z): 世界坐标（米），X为横向，Y为高度(0=地面)，Z为深度
+            (X, Y, Z): 地面坐标（米），X为横向，Y=0地面，Z为深度（相机前方为正）
         """
-        # 使用默认内参
         if K is None:
             K = self.K_wall
-        
-        cx = K[0, 2]
-        cy = K[1, 2]
-        fx = K[0, 0]
-        fy = K[1, 1]
-        
-        # 俯角取绝对值（度数转弧度）
-        pitch_rad = np.radians(abs(pitch))
-        
-        # 1. 计算射线与光轴的夹角（垂直方向）
-        # θ_v = arctan((v - cy) / fy)
-        theta_v = np.arctan2(v - cy, fy)
-        
-        # 2. 射线与水平线的夹角 = 射线夹角 + 俯角
-        # 因为俯角向下，所以相加
-        alpha = theta_v + pitch_rad
-        
-        # 3. 检查射线是否指向地面（alpha 必须在 0 到 90 度之间）
-        if alpha <= 0 or alpha >= np.pi / 2:
+
+        # 像素 → 归一化相机坐标
+        x_norm = (u - K[0, 2]) / K[0, 0]
+        y_norm = (v - K[1, 2]) / K[1, 1]
+
+        # y_norm <= 0 表示像素在主点上方，射线不与地面相交
+        if y_norm <= 0:
             return None
+
+        # 俯角（弧度）
+        pitch_rad = np.radians(abs(self.pitch))
         
-        # 4. 计算深度 Z = H / tan(α)
-        Z = camera_height / np.tan(alpha)
+        # 射线与光轴夹角
+        theta = np.arctan(y_norm)
         
-        # 5. 计算横向 X 坐标
-        # 射线水平方向的角度
-        theta_u = np.arctan2(u - cx, fx)
-        # X = Z * tan(θ_u)，因为相机有俯角，需要考虑 pitch 对水平方向的影响
-        X = Z * np.tan(theta_u)
+        # 射线与水平线总角度
+        phi = theta + pitch_rad
         
-        Y = 0  # 地面高度为0
+        # 深度 Z = H / tan(phi)
+        Z = self.camera_height / np.tan(phi)
         
+        # X方向：同样需要考虑俯角
+        # 射线与光轴的横向夹角为 arctan(x_norm)
+        # 实际横向偏移需要考虑垂直方向的角度影响
+        X = Z * np.tan(np.arctan(x_norm) * np.cos(pitch_rad))
+
+        Y = 0.0           # 地面
+
         return (X, Y, Z)
     
     def save_params(self, filepath):
@@ -266,7 +282,7 @@ def main():
     parser.add_argument('--output', type=str, default='models/calibration.yaml', help='输出参数文件')
     parser.add_argument('--interactive', action='store_true', help='交互式验证模式')
     parser.add_argument('--calibrate', action='store_true', help='执行标定')
-    parser.add_argument('--scale', type=str, default=None, help='手动输入尺度校准（像素距离,实际米），如: --scale 607,1.55')
+    parser.add_argument('--camera-height', type=float, default=None, help='相机安装高度（米），用于单目测距')
     
     args = parser.parse_args()
     print(">>> 参数解析完成")
@@ -284,15 +300,10 @@ def main():
     # 创建标定器
     calibrator = CameraCalibrator()
     
-    # 手动尺度校准
-    if args.scale:
-        parts = str(args.scale).split(',')
-        if len(parts) == 2:
-            pixel_dist = float(parts[0])
-            real_m = float(parts[1])
-            calibrator.set_scale(pixel_dist, real_m)
-        else:
-            print("错误：尺度参数格式应为 '像素距离,实际米'，如: --scale 607,1.55")
+    # 手动设置相机高度
+    if args.camera_height is not None:
+        calibrator.camera_height = args.camera_height
+        print(f">>> 相机高度设置为: {args.camera_height} 米")
     
     # 检查是否有已保存的参数
     if not args.calibrate and os.path.exists(args.output):
@@ -398,10 +409,9 @@ def main():
             print(">>> 输入无效，使用默认值 1.55 米")
             real_distance = 1.55
         
-        # 设置比例尺
-        calibrator.set_scale(pixel_distance, real_distance)
+        # 设置比例尺（通过校准点反推相机高度）
+        calibrator.set_scale(px1, py1, px2, py2, real_distance)
         print(f">>> 比例尺校准完成！")
-        print(f">>> 1 像素 = {calibrator.scale_factor:.6f} 米")
         print("=" * 50)
         
         # ========== 正常坐标获取模式 ==========
