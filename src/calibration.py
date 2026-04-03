@@ -304,7 +304,6 @@ def main():
     # 交互式验证
     if args.interactive:
         # 检查是否有显示器
-        import os
         if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
             print("警告：未检测到显示环境 (DISPLAY/WAYLAND_DISPLAY)")
             print("交互模式可能无法运行")
