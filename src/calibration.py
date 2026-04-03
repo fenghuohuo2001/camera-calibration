@@ -171,17 +171,18 @@ class CameraCalibrator:
         
         return R, t
     
-    def pixel_to_world(self, u, v, K=None, camera_height=1.74):
+    def pixel_to_world(self, u, v, K=None, camera_height=1.74, pitch=-25.37):
         """
         像素坐标转世界坐标（基于相机高度的单目测距）
         
-        原理：已知相机高度，通过射线与地面交点计算3D坐标
+        原理：已知相机高度和俯角，通过射线与地面交点计算3D坐标
         - 不需要 R|t 变换（因为是同一相机旋转视角）
         
         Args:
             u, v: 像素坐标
             K: 相机内参矩阵（可选，默认使用1080P相机内参）
             camera_height: 相机距离地面高度（米），默认1.74米
+            pitch: 相机俯仰角（度），光轴向下倾斜为负，默认-25.37°
             
         Returns:
             (X, Y, Z): 世界坐标（米），X为横向，Y为高度(0=地面)，Z为深度
@@ -190,32 +191,36 @@ class CameraCalibrator:
         if K is None:
             K = self.K_wall
         
-        # 1. 像素 → 归一化相机坐标
-        x_norm = (u - K[0, 2]) / K[0, 0]
-        y_norm = (v - K[1, 2]) / K[1, 1]
+        cx = K[0, 2]
+        cy = K[1, 2]
+        fx = K[0, 0]
+        fy = K[1, 1]
         
-        # 2. 检查射线是否指向地面
-        # y_norm > 0 表示像素在主点下方（看向地面方向）
-        if y_norm <= 0:
+        # 俯角取绝对值（度数转弧度）
+        pitch_rad = np.radians(abs(pitch))
+        
+        # 1. 计算射线与光轴的夹角（垂直方向）
+        # θ_v = arctan((v - cy) / fy)
+        theta_v = np.arctan2(v - cy, fy)
+        
+        # 2. 射线与水平线的夹角 = 射线夹角 + 俯角
+        # 因为俯角向下，所以相加
+        alpha = theta_v + pitch_rad
+        
+        # 3. 检查射线是否指向地面（alpha 必须在 0 到 90 度之间）
+        if alpha <= 0 or alpha >= np.pi / 2:
             return None
         
-        # 3. 计算射线与地面交点
-        # 射线方程：P = λ * [x_norm, y_norm, 1]
-        # 地面在相机下方距离 camera_height
-        # 所以 λ = camera_height / y_norm
-        λ = camera_height / y_norm
+        # 4. 计算深度 Z = H / tan(α)
+        Z = camera_height / np.tan(alpha)
         
-        # 4. 计算地面交点坐标（米）
-        # 射线方向向量归一化后的 Z 分量是 1/√(x_norm² + y_norm² + 1)
-        # 正确的深度 Z = λ / √(x_norm² + y_norm² + 1)
-        # 但更直观的方式：Z 是射线在地面上的 Z 坐标，即 λ 在 Z 方向的分量
-        # 由于射线方向为 [x_norm, y_norm, 1]，其单位方向为 [x_norm, y_norm, 1] / mag
-        # 其中 mag = √(x_norm² + y_norm² + 1)
-        mag = np.sqrt(x_norm**2 + y_norm**2 + 1)
+        # 5. 计算横向 X 坐标
+        # 射线水平方向的角度
+        theta_u = np.arctan2(u - cx, fx)
+        # X = Z * tan(θ_u)，因为相机有俯角，需要考虑 pitch 对水平方向的影响
+        X = Z * np.tan(theta_u)
         
-        X = λ * x_norm / mag  # 横向（左右）
-        Z = λ * 1.0 / mag     # 深度（前后），相机前方为正
-        Y = 0                 # 地面高度为0
+        Y = 0  # 地面高度为0
         
         return (X, Y, Z)
     
