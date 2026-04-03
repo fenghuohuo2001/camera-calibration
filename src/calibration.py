@@ -55,7 +55,7 @@ class CameraCalibrator:
         if config:
             self.load_config(config)
         
-    def set_scale(self, pixel_distance, real_distance_cm):
+    def set_scale(self, pixel_distance, real_distance):
         """
         设置尺度校准（用于验证计算精度）
         
@@ -64,12 +64,16 @@ class CameraCalibrator:
         
         Args:
             pixel_distance: 两个像素点之间的像素距离
-            real_distance_cm: 实际距离（厘米）
+            real_distance: 实际距离（米）
         """
         if pixel_distance > 0:
-            self.scale_factor = real_distance_cm / 100.0 / pixel_distance
-            print(f">>> 比例尺参考: 1 像素 ≈ {self.scale_factor:.4f} 米")
-            print(f">>> 校准点距离: {real_distance_cm} cm = {pixel_distance:.1f} 像素")
+            # 正确公式：实际距离(米) / 像素距离 = 米/像素
+            self.scale_factor = real_distance / pixel_distance
+            print(f">>> 比例尺参考: 1 像素 ≈ {self.scale_factor:.6f} 米")
+            print(f">>> 校准点距离: {real_distance} m = {pixel_distance:.1f} 像素")
+            # 验证
+            verified_distance = self.scale_factor * pixel_distance
+            print(f">>> 验证: {pixel_distance:.1f} 像素 × {self.scale_factor:.6f} = {verified_distance:.3f} 米")
         
     def calibrate(self, image1_path, image2_path):
         """
@@ -202,9 +206,16 @@ class CameraCalibrator:
         λ = camera_height / y_norm
         
         # 4. 计算地面交点坐标（米）
-        X = λ * x_norm  # 横向（左右）
-        Z = λ           # 深度（前后），相机前方为正
-        Y = 0           # 地面高度为0
+        # 射线方向向量归一化后的 Z 分量是 1/√(x_norm² + y_norm² + 1)
+        # 正确的深度 Z = λ / √(x_norm² + y_norm² + 1)
+        # 但更直观的方式：Z 是射线在地面上的 Z 坐标，即 λ 在 Z 方向的分量
+        # 由于射线方向为 [x_norm, y_norm, 1]，其单位方向为 [x_norm, y_norm, 1] / mag
+        # 其中 mag = √(x_norm² + y_norm² + 1)
+        mag = np.sqrt(x_norm**2 + y_norm**2 + 1)
+        
+        X = λ * x_norm / mag  # 横向（左右）
+        Z = λ * 1.0 / mag     # 深度（前后），相机前方为正
+        Y = 0                 # 地面高度为0
         
         return (X, Y, Z)
     
@@ -250,7 +261,7 @@ def main():
     parser.add_argument('--output', type=str, default='models/calibration.yaml', help='输出参数文件')
     parser.add_argument('--interactive', action='store_true', help='交互式验证模式')
     parser.add_argument('--calibrate', action='store_true', help='执行标定')
-    parser.add_argument('--scale', type=str, default=None, help='手动输入尺度校准（像素距离,实际cm），如: --scale 1000,155.5')
+    parser.add_argument('--scale', type=str, default=None, help='手动输入尺度校准（像素距离,实际米），如: --scale 607,1.55')
     
     args = parser.parse_args()
     print(">>> 参数解析完成")
@@ -273,10 +284,10 @@ def main():
         parts = str(args.scale).split(',')
         if len(parts) == 2:
             pixel_dist = float(parts[0])
-            real_cm = float(parts[1])
-            calibrator.set_scale(pixel_dist, real_cm)
+            real_m = float(parts[1])
+            calibrator.set_scale(pixel_dist, real_m)
         else:
-            print("错误：尺度参数格式应为 '像素距离,实际cm'，如: --scale 1000,155.5")
+            print("错误：尺度参数格式应为 '像素距离,实际米'，如: --scale 607,1.55")
     
     # 检查是否有已保存的参数
     if not args.calibrate and os.path.exists(args.output):
@@ -368,22 +379,22 @@ def main():
         print(f">>> 两个校准点之间的像素距离: {pixel_distance:.2f} 像素")
         
         # 提示用户输入实际距离
-        print("\n>>> 请输入这两个点之间的实际距离（厘米）:")
+        print("\n>>> 请输入这两个点之间的实际距离（米）:")
         print(">>> （可以在终端输入，或直接回车使用默认值）")
         try:
-            real_distance_input = input(">>> 请输入实际距离 (cm): ").strip()
+            real_distance_input = input(">>> 请输入实际距离 (米): ").strip()
             if real_distance_input:
-                real_distance_cm = float(real_distance_input)
+                real_distance = float(real_distance_input)
             else:
-                # 默认值：假设点击的是图像上相距约 155.5cm 的点（示例）
-                real_distance_cm = 155.5
-                print(f">>> 使用默认值: {real_distance_cm} cm")
+                # 默认值：假设点击的是图像上相距约 1.55 米的点（示例）
+                real_distance = 1.55
+                print(f">>> 使用默认值: {real_distance} 米")
         except ValueError:
-            print(">>> 输入无效，使用默认值 155.5 cm")
-            real_distance_cm = 155.5
+            print(">>> 输入无效，使用默认值 1.55 米")
+            real_distance = 1.55
         
         # 设置比例尺
-        calibrator.set_scale(pixel_distance, real_distance_cm)
+        calibrator.set_scale(pixel_distance, real_distance)
         print(f">>> 比例尺校准完成！")
         print(f">>> 1 像素 = {calibrator.scale_factor:.6f} 米")
         print("=" * 50)
