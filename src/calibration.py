@@ -437,3 +437,7 @@ def main():
         cv2.destroyAllWindows()
     
     print("\n=== 完成 ===")
+
+
+if __name__ == '__main__':
+    main()
