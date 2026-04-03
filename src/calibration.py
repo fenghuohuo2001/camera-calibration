@@ -311,10 +311,6 @@ def main():
             print("交互模式可能无法运行")
             print("尝试使用虚拟显示器或设置 DISPLAY 环境变量")
         
-        # 继续正常的交互验证
-        print("\n=== 交互式验证模式 ===")
-        print("点击图像获取实际坐标，按 'q' 退出")
-        
         img = cv2.imread(args.image1)
         if img is None:
             print(f"无法读取图像: {args.image1}")
@@ -322,6 +318,81 @@ def main():
         
         h, w = img.shape[:2]
         img_small = cv2.resize(img, (w // 2, h // 2))
+        
+        # ========== 比例尺校准流程 ==========
+        print("\n" + "=" * 50)
+        print("=== 比例尺校准模式 ===")
+        print("=" * 50)
+        print("请按照以下步骤进行比例尺校准：")
+        print("1. 在图像上点击两个已知实际距离的点")
+        print("2. 输入这两个点之间的实际距离（厘米）")
+        print("3. 程序将自动计算比例尺")
+        print("=" * 50)
+        
+        calibration_points = []
+        
+        def calibration_mouse_callback(event, x, y, flags, param):
+            if event == cv2.EVENT_LBUTTONDOWN:
+                orig_x = x * 2
+                orig_y = y * 2
+                calibration_points.append((orig_x, orig_y))
+                print(f">>> 已记录第 {len(calibration_points)} 个点: ({orig_x}, {orig_y})")
+        
+        cv2.namedWindow('Scale Calibration')
+        cv2.setMouseCallback('Scale Calibration', calibration_mouse_callback)
+        
+        print("\n>>> 正在等待校准点输入（请点击两个点）...")
+        
+        while len(calibration_points) < 2:
+            display_img = img_small.copy()
+            cv2.putText(display_img, "Scale Calibration - 点击2个点", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # 绘制已点击的点
+            for i, (px, py) in enumerate(calibration_points):
+                cv2.circle(display_img, (px // 2, py // 2), 8, (0, 255, 255), 2)
+                cv2.putText(display_img, f"Point {i+1}", (px // 2 + 15, py // 2 - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            
+            cv2.imshow('Scale Calibration', display_img)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q') or key == 27:
+                print(">>> 校准取消")
+                cv2.destroyAllWindows()
+                return
+        
+        cv2.destroyAllWindows()
+        
+        # 计算像素距离
+        px1, py1 = calibration_points[0]
+        px2, py2 = calibration_points[1]
+        pixel_distance = np.sqrt((px2 - px1)**2 + (py2 - py1)**2)
+        print(f">>> 两个校准点之间的像素距离: {pixel_distance:.2f} 像素")
+        
+        # 提示用户输入实际距离
+        print("\n>>> 请输入这两个点之间的实际距离（厘米）:")
+        print(">>> （可以在终端输入，或直接回车使用默认值）")
+        try:
+            real_distance_input = input(">>> 请输入实际距离 (cm): ").strip()
+            if real_distance_input:
+                real_distance_cm = float(real_distance_input)
+            else:
+                # 默认值：假设点击的是图像上相距约 155.5cm 的点（示例）
+                real_distance_cm = 155.5
+                print(f">>> 使用默认值: {real_distance_cm} cm")
+        except ValueError:
+            print(">>> 输入无效，使用默认值 155.5 cm")
+            real_distance_cm = 155.5
+        
+        # 设置比例尺
+        calibrator.set_scale(pixel_distance, real_distance_cm)
+        print(f">>> 比例尺校准完成！")
+        print(f">>> 1 像素 = {calibrator.scale_factor:.6f} 米")
+        print("=" * 50)
+        
+        # ========== 正常坐标获取模式 ==========
+        print("\n=== 交互式验证模式 ===")
+        print("点击图像获取实际坐标，按 'q' 退出")
         
         click_points = []
         
