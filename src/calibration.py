@@ -57,7 +57,10 @@ class CameraCalibrator:
         
     def set_scale(self, pixel_distance, real_distance_cm):
         """
-        设置尺度校准
+        设置尺度校准（用于验证计算精度）
+        
+        注意：这个方法主要用于显示比例尺信息，实际坐标转换使用相机高度
+        直接计算，不需要 scale_factor。
         
         Args:
             pixel_distance: 两个像素点之间的像素距离
@@ -65,7 +68,8 @@ class CameraCalibrator:
         """
         if pixel_distance > 0:
             self.scale_factor = real_distance_cm / 100.0 / pixel_distance
-            print(f">>> 尺度已校准: 1 像素 = {self.scale_factor:.4f} 米")
+            print(f">>> 比例尺参考: 1 像素 ≈ {self.scale_factor:.4f} 米")
+            print(f">>> 校准点距离: {real_distance_cm} cm = {pixel_distance:.1f} 像素")
         
     def calibrate(self, image1_path, image2_path):
         """
@@ -163,60 +167,44 @@ class CameraCalibrator:
         
         return R, t
     
-    def pixel_to_world(self, u, v, K=None, camera_height=2.5):
+    def pixel_to_world(self, u, v, K=None, camera_height=1.74):
         """
-        像素坐标转世界坐标（扫地机坐标系）
+        像素坐标转世界坐标（基于相机高度的单目测距）
+        
+        原理：已知相机高度，通过射线与地面交点计算3D坐标
+        - 不需要 R|t 变换（因为是同一相机旋转视角）
         
         Args:
             u, v: 像素坐标
             K: 相机内参矩阵（可选，默认使用1080P相机内参）
-            camera_height: 墙装相机距离地面高度（米），默认2.5米
+            camera_height: 相机距离地面高度（米），默认1.74米
             
         Returns:
-            (X, Y, Z): 世界坐标（米），扫地机坐标系下
+            (X, Y, Z): 世界坐标（米），X为横向，Y为高度(0=地面)，Z为深度
         """
-        if self.R is None or self.t is None:
-            raise ValueError("请先执行标定")
-        
         # 使用默认内参
         if K is None:
             K = self.K_wall
         
-        # 1. 像素 → 归一化相机坐标（墙装相机坐标系）
+        # 1. 像素 → 归一化相机坐标
         x_norm = (u - K[0, 2]) / K[0, 0]
         y_norm = (v - K[1, 2]) / K[1, 1]
         
-        # 2. 射线与地面交点计算
-        # 假设相机向下倾斜安装，y_norm > 0 表示射线指向地面方向
-        # 地面高度为 0，相机高度为 camera_height
-        # 射线方程：P = λ * [x_norm, y_norm, 1]
-        # 交点满足：P_z = -camera_height（地面在相机下方）
-        # 即 λ * 1 = camera_height（因为 y_norm > 0 朝向地面）
-        
+        # 2. 检查射线是否指向地面
+        # y_norm > 0 表示像素在主点下方（看向地面方向）
         if y_norm <= 0:
-            # 射线不指向地面（看向天空或水平方向）
             return None
         
-        # 距离相机的高度（注意符号：地面在相机下方，所以是负的）
-        # 实际上：camera_height = λ * y_norm
+        # 3. 计算射线与地面交点
+        # 射线方程：P = λ * [x_norm, y_norm, 1]
+        # 地面在相机下方距离 camera_height
+        # 所以 λ = camera_height / y_norm
         λ = camera_height / y_norm
         
-        # 墙装相机坐标系下的3D点（地面点）
-        P_wall = λ * np.array([x_norm, y_norm, 1])
-        
-        # 3. 转换到扫地机坐标系
-        # R 和 t 是从扫地机到墙装相机的外参
-        # 即：P_wall = R @ P_robot + t
-        # 所以：P_robot = R^T @ (P_wall - t)
-        R_inv = self.R.T
-        t_vec = self.t.flatten()
-        
-        P_robot = R_inv @ (P_wall - t_vec)
-        
-        # 4. 应用比例尺转换为米
-        X = float(P_robot[0] * self.scale_factor)
-        Y = float(P_robot[1] * self.scale_factor)
-        Z = float(P_robot[2] * self.scale_factor)
+        # 4. 计算地面交点坐标（米）
+        X = λ * x_norm  # 横向（左右）
+        Z = λ           # 深度（前后），相机前方为正
+        Y = 0           # 地面高度为0
         
         return (X, Y, Z)
     
